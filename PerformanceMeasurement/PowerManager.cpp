@@ -175,12 +175,14 @@ int POWER_MANAGER::ResetMemClkRange(){
         exit(-1);
     }
 
+    #if defined(SUPPORT_SET_MEMORY_CLOCK)
     nvmlResult = nvmlDeviceResetMemoryLockedClocks(device);
     if(NVML_SUCCESS != nvmlResult){
         printf("Power Manager Warning: Failed to reset Mem clock range (NVML ERROR INFO: %s)\n", nvmlErrorString(nvmlResult));
         // exit(-1);
     }
-
+    #endif
+    
     std::cout << "Power Manager: Reset Mem clock" << std::endl;
 
     pMyNVML->Uninit();
