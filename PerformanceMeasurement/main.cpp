@@ -9,9 +9,30 @@ Creation Date: 20200504
 *******************************************************************************/
 
 #include "main.h"
+#include "jstp_server.h"
+#include "mgo_router.h"
+#include <iostream>
+#include <ostream>
 
 // PerformanceMeasurement.bin -h
 // PerformanceMeasurement.bin
+
+pthread_cond_t condTStart;   // control children processes to start simultaneously
+pthread_mutex_t mutexTStart; // mutex for condTStart
+
+unsigned int ChlidWaitCount;
+unsigned int ChlidFinishCount; // Initial value is 0; ChlidFinishCount++ when a child thread/process finished; main thread check the value of ChlidFinishCount to know whether all child finished
+pthread_cond_t condTEnd;       // Child thread sends condTEnd to main thread when the child thread finished
+pthread_mutex_t mutexTEnd;     // mutex for condTStart
+
+sem_t semPEnd; // semaphores control children processes of applications
+
+pthread_mutex_t lockValidFlag;
+pthread_mutex_t lockMsgHandlerSource;
+
+float CPUPower = 0.0;           // CPU 瞬时功率
+bool isMeasureCPUPower = false; // 是否进行 CPU 功率测量
+float CPUPowerDuration = 0.1;   // 一次 CPU 功率测量的时长 单位 s
 
 CONFIG Config;
 PERF_DATA PerfData;
@@ -100,6 +121,14 @@ int main(int argc, char** argv)
 
         // output result
         // PerfData.output(Config);
+    }
+    else if (Config.MeasureMode == MEASURE_MODE::JSTP_DAEMON)
+    {
+        using namespace network;
+        std::shared_ptr<network::JstpServer> server(new JstpServer("127.0.0.1", 5101));
+        std::unique_ptr<MgoRouter> mgo_router(new MgoRouter());
+        server->add_router(std::move(mgo_router));
+        server->run();
     }
     else if (Config.MeasureMode == MEASURE_MODE::INTERACTION)
     {
@@ -860,7 +889,9 @@ int MeasureInit()
 
     PerfData.init(Config);
 
+    std::cout << "before cuResult init" << std::endl;
     cuResult = cuInit(0);
+    std::cout << "after cuResult init" << std::endl;
     if (cuResult != CUDA_SUCCESS)
     {
         printf("Error code %d on cuInit\n", cuResult);
@@ -1006,6 +1037,10 @@ int ParseOptions(int argc, char** argv, bool& isTuneAtBegin)
             else if (strcmp("DAEMON", optarg) == 0)
             {
                 Config.MeasureMode = MEASURE_MODE::DAEMON;
+            }
+            else if (strcmp("JSTP_DAEMON", optarg) == 0)
+            {
+                Config.MeasureMode = MEASURE_MODE::JSTP_DAEMON;
             }
             else
             {
@@ -1300,4 +1335,137 @@ int ParseOptions(int argc, char** argv, bool& isTuneAtBegin)
     err |= PM.initArg(&MyNVML);
 
     return err;
+}
+
+CONFIG::~CONFIG()
+{
+    for (size_t i = 0; i < vecAppPath.size(); i++)
+    {
+        if (vecAppPath[i] != NULL)
+        {
+            free(vecAppPath[i]);
+            vecAppPath[i] = NULL;
+        }
+    }
+
+    for (size_t i = 0; i < vecAppAgrv.size(); i++)
+    {
+        if (vecAppAgrv[i] != NULL)
+        {
+            size_t j = 0;
+            while (vecAppAgrv[i][j] != NULL)
+            {
+                free(vecAppAgrv[i][j]);
+                vecAppAgrv[i][j] = NULL;
+                j++;
+            }
+
+            free(vecAppAgrv[i]);
+            vecAppAgrv[i] = NULL;
+        }
+    }
+}
+
+int CONFIG::LoadAppList(char* AppListPath)
+{
+    // std::string src = AppListPath;
+
+    std::ifstream srcStream(AppListPath, std::ifstream::in); // |std::ifstream::binary
+    if (!srcStream.is_open())
+    {
+        srcStream.close();
+        std::cerr << "ERROR: failed to open application list file" << std::endl;
+        exit(1);
+    }
+
+    std::string TmpStr;
+    const char* delim = " \r"; // 一行中 使用 空格 分词
+
+    std::getline(srcStream, TmpStr);
+    while (!TmpStr.empty())
+    { // 读取一行
+
+        char* pCharBuff = (char*)malloc(sizeof(char) * (TmpStr.length() + 1));
+        strcpy(pCharBuff, TmpStr.c_str());
+
+        // 读取第一个 词, 即应用可执行文件路径
+        char* TmpPtrChar = strtok(pCharBuff, delim);
+
+        vecAppPath.emplace_back((char*)malloc(sizeof(char) * (strlen(TmpPtrChar) + 1)));
+        strcpy(vecAppPath.back(), TmpPtrChar);
+
+        std::vector<char*> TmpVecArg;
+
+        // 这里要处理 TmpVecArg[0], 复制可执行文件/命令, 而不要前边的路径
+        std::string TmpStr1 = vecAppPath.back();
+        size_t found = TmpStr1.find_last_of('/');
+        TmpStr1 = TmpStr1.substr(found + 1);
+        TmpVecArg.emplace_back((char*)malloc(sizeof(char) * (TmpStr1.length() + 1)));
+        strcpy(TmpVecArg.back(), TmpStr1.c_str());
+
+        while ((TmpPtrChar = strtok(NULL, delim)))
+        {
+            TmpVecArg.emplace_back((char*)malloc(sizeof(char) * (strlen(TmpPtrChar) + 1)));
+            strcpy(TmpVecArg.back(), TmpPtrChar);
+        }
+
+        vecAppAgrv.emplace_back((char**)malloc(sizeof(char*) * (TmpVecArg.size() + 1)));
+        vecAppAgrv.back()[TmpVecArg.size()] = NULL;
+
+        for (size_t i = 0; i < TmpVecArg.size(); i++)
+        {
+            vecAppAgrv.back()[i] = TmpVecArg[i];
+        }
+
+        free(pCharBuff);
+        TmpStr.clear();
+        std::getline(srcStream, TmpStr);
+    }
+
+    srcStream.close();
+
+    return 0;
+}
+
+void CONFIG::Reset(std::string OutPath)
+{
+    if (MeasureMode != MEASURE_MODE::DAEMON && MeasureMode != MEASURE_MODE::JSTP_DAEMON)
+    {
+        std::cout << "WARNING: MEASURE_MODE is not INTERACTION, do nothing!" << std::endl;
+        return;
+    }
+    istrategy = false;
+    if (OutPath.empty() == true)
+    {
+        isGenOutFile = false;
+        OutFilePath.clear();
+    }
+    else
+    {
+        isGenOutFile = true;
+        OutFilePath = OutPath;
+    }
+}
+
+void CONFIG::init()
+{
+    MeasureMode = MEASURE_MODE::INTERACTION;
+
+    isGenOutFile = false;
+    OutFilePath.clear();
+    isTrace = false;
+    isMeasureEnergy = true;
+    isMeasureMemUtil = true;
+    isMeasureMemClk = true;
+    isMeasureGPUUtil = true;
+    isMeasureSMClk = true;
+    istrategy = false;
+
+    DeviceID = 1;
+
+    SampleInterval = 100.0;
+    // PowerThreshold = 1.65;
+    PowerThreshold = 30;
+    // MeasureDuration = -1.0;
+    PostInterval = 0.0;
 }

@@ -8,7 +8,7 @@ CC = g++
 CFLAGS = -Wall -O3 -Wno-unused-parameter
 SPECIALFLAGS = -lnvidia-ml -lpthread
 
-SRC = main.cpp PowerManager.cpp
+SRC = main.cpp PowerManager.cpp mgo_router.cpp
 TARGET = PerfMeasure.bin
 
 JSTP_DIR = ../jstp
