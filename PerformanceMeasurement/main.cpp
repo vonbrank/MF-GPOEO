@@ -13,6 +13,7 @@ Creation Date: 20200504
 #include "mgo_router.h"
 #include <iostream>
 #include <ostream>
+#include "daemon_controller.h"
 
 // PerformanceMeasurement.bin -h
 // PerformanceMeasurement.bin
@@ -416,22 +417,8 @@ static void* HandleAppMsg(void* ppArgs)
 
     if (tmpStr.find("TIME_STAMP: ") == 0)
     { // 时间戳
-        pthread_mutex_lock(&lockMsgHandlerSource);
-        std::cout << "INFO: 处理 TIME_STAMP 信号 isMeasuring = " << PerfData.isMeasuring << std::endl;
-        if (PerfData.isMeasuring < 0)
-        {
-            std::cout << "WARNING: measurement count < 0 (isMeasuring = " << PerfData.isMeasuring << ")" << std::endl;
-        }
-        else if (PerfData.isMeasuring == 0)
-        {
-            std::cout << "WARNING: measurement not started (isMeasuring = " << PerfData.isMeasuring << ")" << std::endl;
-        }
-        else
-        {
-            PerfData.vecAppStampDescription.emplace_back(tmpStr.substr(strlen("TIME_STAMP: ")));
-            std::cout << "INFO: save time stamp description (" << tmpStr << ")" << std::endl;
-        }
-        pthread_mutex_unlock(&lockMsgHandlerSource);
+        std::string description = tmpStr.substr(strlen("TIME_STAMP: "));
+        daemon_controller::handle_time_stamp(description);
     }
     else if (tmpStr.find("SM_RANGE: ") == 0)
     { // 调节核心频率范围
@@ -441,110 +428,21 @@ static void* HandleAppMsg(void* ppArgs)
     }
     else if (tmpStr.find("RESET_SM_CLOCK") == 0)
     { // 重置核心频率范围
-        PM.Reset();
+        daemon_controller::handle_reset_sm_clock();
     }
     else if (tmpStr.find("START") == 0)
     { // 开始测量
-        pthread_mutex_lock(&lockMsgHandlerSource);
-        if (PerfData.isMeasuring < 0)
-        {
-            pthread_mutex_unlock(&lockMsgHandlerSource);
-            std::cout << "WARNING: measurement count < 0 (isMeasuring = " << PerfData.isMeasuring << ")" << std::endl;
-        }
-        else if (PerfData.isMeasuring == 0)
-        {
-            PerfData.isMeasuring++; // 启动计数++
-            std::cout << "INFO: 处理 START 信号 isMeasuring = " << PerfData.isMeasuring << std::endl;
-            pthread_mutex_unlock(&lockMsgHandlerSource);
-            // 注册时钟信号，启动采样
-            signal(SIGALRM, AlarmSampler);
-            struct itimerval tick;
-            tick.it_value.tv_sec = 0; // 0秒钟后将启动定时器
-            tick.it_value.tv_usec = 1;
-            tick.it_interval.tv_sec = 0; // 定时器启动后，每隔 Config.SampleInterval*1000 us 将执行相应的函数
-            tick.it_interval.tv_usec = Config.SampleInterval * 1000;
-            setitimer(ITIMER_REAL, &tick, NULL);
-            // ualarm(10, Config.SampleInterval*1000);
-            std::cout << "Sampling has already started." << std::endl;
-            std::cout << "Sampling..." << std::endl;
-        }
-        // PerfData.isMeasuring++; // 启动计数++
-        // std::cout << "INFO: 处理 START 信号 isMeasuring = " << PerfData.isMeasuring << std::endl;
-        // pthread_mutex_unlock(&lockMsgHandlerSource);
+        daemon_controller::handle_start();
     }
     else if (tmpStr.find("STOP") == 0)
-    {                              // 结束测量
-        usleep(0.2 * 1000 * 1000); // 暂停 0.2s ，使所有时间戳都被记录下来。
-        std::cout << "INFO: 处理 STOP 信号 开始获得锁 lockMsgHandlerSource " << std::endl;
-        pthread_mutex_lock(&lockMsgHandlerSource);
-        std::cout << "INFO: 处理 STOP 信号 已经获得锁 lockMsgHandlerSource " << std::endl;
-        PerfData.isMeasuring--; // 启动计数--
-        std::cout << "INFO: 处理 STOP 信号 isMeasuring = " << PerfData.isMeasuring << std::endl;
-        if (PerfData.isMeasuring < 0)
-        {
-            pthread_mutex_unlock(&lockMsgHandlerSource);
-            std::cout << "WARNING: measurement count < 0 (isMeasuring = " << PerfData.isMeasuring << ")" << std::endl;
-        }
-        else if (PerfData.isMeasuring == 0)
-        {
-            pthread_mutex_unlock(&lockMsgHandlerSource);
-            // 结束采样
-            struct itimerval tick;
-            getitimer(ITIMER_REAL, &tick); // 获得本次定时的剩余时间
-            tick.it_interval.tv_sec = 0;   // 设置 interval 为0，完成本次定时之后，停止定时
-            tick.it_interval.tv_usec = 0;
-            setitimer(ITIMER_REAL, &tick, NULL); // 完成本次定时之后，停止定时
-            // ualarm(0, Config.SampleInterval*1000);
-            usleep(20 * 1000); // 暂停 20ms ，使所有时间戳都被记录下来。
-
-            std::cout << "Sampling has already stopped." << std::endl;
-            PerfData.output(Config);
-
-            Config.Reset();
-            PerfData.Reset();
-        }
+    { // 结束测量
+        daemon_controller::handle_stop();
     }
     else if (tmpStr.find("RESET") == 0)
     {
-        unsigned int WaitNum = 10;
         unsigned int Len = 7;
-        for (unsigned int i = 0; i < WaitNum; i++)
-        {
-            pthread_mutex_lock(&lockMsgHandlerSource);
-            std::cout << "INFO: 处理 RESET 信号 isMeasuring = " << PerfData.isMeasuring << std::endl;
-            if (PerfData.isMeasuring > 0)
-            {
-                pthread_mutex_unlock(&lockMsgHandlerSource);
-                if (i == (WaitNum - 1))
-                {
-                    std::cout << "WARNING: Sampling is still in progress! NOT RESET!" << std::endl;
-                }
-                else
-                {
-                    std::cout << "WARNING: Sampling is in progress! Wait 1s" << std::endl;
-                    sleep(1); // 这里循环等待 1s * (WaitNum-1)，每秒监测一次
-                }
-                continue;
-            }
-            else
-            {
-                if (tmpStr.size() > Len)
-                {
-                    std::string OutPath = tmpStr.substr(Len);
-                    Config.Reset(OutPath);
-                    PerfData.Reset();
-                    PerfData.SetOutPath(Config);
-                }
-                else
-                {
-                    Config.Reset();
-                    PerfData.Reset();
-                }
-
-                pthread_mutex_unlock(&lockMsgHandlerSource);
-                break;
-            }
-        }
+        std::string output_path = tmpStr.substr(Len);
+        daemon_controller::handle_reset(output_path);
     }
     else {}
 
