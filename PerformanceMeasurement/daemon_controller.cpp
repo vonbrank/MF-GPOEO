@@ -133,4 +133,31 @@ namespace daemon_controller
     {
         PM.Reset();
     }
+
+    HardwareStats handle_hardware_stats()
+    {
+        pthread_mutex_lock(&lockMsgHandlerSource);
+
+        auto cpuPower = PerfData.currCPUPower;
+        auto gpuPower = PerfData.currPower;
+
+        auto cpuEnery = PerfData.CPUEnergy;
+        auto gpuEnery = PerfData.Energy;
+
+        auto memUsage = PerfData.currUtil.memory;
+        auto gpuUsage = PerfData.currUtil.gpu;
+
+        std::cout << "memUsage = " << memUsage << std::endl;
+
+        pthread_mutex_unlock(&lockMsgHandlerSource);
+
+        return {
+            cpuPower = cpuPower,
+            gpuPower = gpuPower,
+            cpuEnery = cpuEnery,
+            gpuEnery = gpuEnery,
+            memUsage = memUsage,
+            gpuUsage = gpuUsage,
+        };
+    }
 } // namespace daemon_controller

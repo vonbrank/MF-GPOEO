@@ -19,13 +19,16 @@ namespace network
         {
             if (url == "hardware-stats")
             {
-                pthread_mutex_lock(&lockMsgHandlerSource);
+                daemon_controller::HardwareStats hardwareStats = daemon_controller::handle_hardware_stats();
 
-                auto currentCpuPower = PerfData.currCPUPower;
+                response["payload"]["data"]["power_data"]["cpu_whole"] = hardwareStats.cpuPower;
+                response["payload"]["data"]["power_data"]["gpu_whole"] = hardwareStats.gpuPower;
 
-                pthread_mutex_unlock(&lockMsgHandlerSource);
+                response["payload"]["data"]["energy_data"]["cpu_whole"] = hardwareStats.cpuEnery;
+                response["payload"]["data"]["energy_data"]["gpu_whole"] = hardwareStats.gpuEnery;
 
-                response["payload"]["data"]["currentCpuPower"] = currentCpuPower;
+                response["payload"]["data"]["usage_data"]["cpu_memory"] = hardwareStats.memUsage;
+                response["payload"]["data"]["usage_data"]["gpu_core"] = hardwareStats.gpuUsage;
             }
         }
         else if (method == "POST")
