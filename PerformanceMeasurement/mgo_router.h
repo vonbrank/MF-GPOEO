@@ -12,6 +12,7 @@ namespace network
 
     public:
         void handleRequest(json& request, json& response) override;
+        bool checkExitRequest(json& request) override;
     };
 } // namespace network
 

@@ -55,14 +55,14 @@ namespace network
         {
             json_string_length = std::stoi(first_line_str);
         }
-        catch (const std::invalid_argument &e)
+        catch (const std::invalid_argument& e)
         {
             ss_log.clear();
             ss_log << "无效参数: " << e.what() << std::endl;
             utils::log(ss_log.str());
             return;
         }
-        catch (const std::out_of_range &e)
+        catch (const std::out_of_range& e)
         {
             ss_log.clear();
             ss_log << "范围超出: " << e.what() << std::endl;
@@ -84,12 +84,31 @@ namespace network
 
         json jstp_response = defaultResponse();
 
-        // utils::log("routers length = " + std::to_string(routers.size()));
-
-        for (auto &router : routers)
         {
-            router->handleRequest(jstp_request, jstp_response);
+            bool need_exit = false;
+
+            for (auto& router : routers)
+            {
+                if (router->checkExitRequest(jstp_request))
+                {
+                    need_exit = true;
+                }
+            }
+
+            if (need_exit)
+            {
+                tcpServer.trycloseServer();
+            }
+            else
+            {
+                for (auto& router : routers)
+                {
+                    router->handleRequest(jstp_request, jstp_response);
+                }
+            }
         }
+
+        // utils::log("routers length = " + std::to_string(routers.size()));
 
         std::string jstp_response_string_payload = jstp_response.dump();
 

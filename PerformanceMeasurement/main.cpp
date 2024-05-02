@@ -130,6 +130,7 @@ int main(int argc, char** argv)
         std::unique_ptr<MgoRouter> mgo_router(new MgoRouter());
         server->add_router(std::move(mgo_router));
         server->run();
+        daemon_controller::handle_exit();
     }
     else if (Config.MeasureMode == MEASURE_MODE::INTERACTION)
     {
@@ -358,30 +359,7 @@ void HandleUDPMsg(int fd)
         if (strncmp(buf[BufIndex], "EXIT", 4) == 0)
         { // 如果 UDP 信息是 EXIT 就跳出
             memset(buf[BufIndex], 0, BUFF_LEN);
-            int tmpMeasuring;
-            for (unsigned int i = 0; i < 5; i++)
-            {
-                pthread_mutex_lock(&lockMsgHandlerSource);
-                tmpMeasuring = PerfData.isMeasuring;
-                pthread_mutex_unlock(&lockMsgHandlerSource);
-                if (tmpMeasuring > 0)
-                {
-                    std::cout << "WARNING: Sampling in progress!" << std::endl;
-                    usleep(5 * 1000 * Config.SampleInterval); // 这里循环等待 一共 5*5 个采样周期
-                }
-                else
-                {
-                    break;
-                }
-            }
-            if (tmpMeasuring > 0)
-            {
-                std::cout << "WARNING: Sampling in progress, but forced to exit!" << std::endl;
-            }
-            else
-            {
-                std::cout << "INFO: Measurement exit" << std::endl;
-            }
+            daemon_controller::handle_exit();
             break;
         }
 

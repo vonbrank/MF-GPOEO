@@ -26,7 +26,7 @@ namespace network
 
     TcpServer::~TcpServer()
     {
-        closeServer();
+        trycloseServer();
     }
 
     void TcpServer::run()
@@ -41,7 +41,7 @@ namespace network
 
         startServer();
 
-        closeServer();
+        trycloseServer();
     }
 
     int TcpServer::init()
@@ -53,7 +53,7 @@ namespace network
             return 1;
         }
 
-        if (bind(listening_sokcet, (sockaddr *)&socketAddress, socketAddressLen) < 0)
+        if (bind(listening_sokcet, (sockaddr*)&socketAddress, socketAddressLen) < 0)
         {
             utils::exitWithError("Failed to connect socket to address");
             return 1;
@@ -80,16 +80,18 @@ namespace network
         while (true)
 
         {
-            int client_socket = accept(listening_sokcet, (sockaddr *)&socketAddress, &socketAddressLen);
+            int client_socket = accept(listening_sokcet, (sockaddr*)&socketAddress, &socketAddressLen);
             if (client_socket < 0)
             {
                 std::ostringstream ss;
                 ss << "[server]: failed to accept incomming connection from " << inet_ntoa(socketAddress.sin_addr) << ":" << ntohs(socketAddress.sin_port);
-                utils::exitWithError(ss.str());
+                utils::log(ss.str());
+                break;
             }
             else
             {
-                std::thread([this, client_socket]() { 
+                std::thread([this, client_socket]()
+                            { 
                                 auto thread_socket = client_socket; 
                                 handleConnection(thread_socket); })
                     .detach();
@@ -97,13 +99,15 @@ namespace network
         }
     }
 
-    void TcpServer::closeServer()
+    void TcpServer::trycloseServer()
     {
         utils::log("Closing TCP Server...\n");
 
         if (isServerSInitialized)
         {
-            close(listening_sokcet);
+            shutdown(listening_sokcet, SHUT_RDWR);
+            isServerSInitialized = false;
+            utils::log("listening_sokcet closed.\n");
         }
 
         if (isServerStarted)
@@ -122,16 +126,16 @@ namespace network
         close(handling_socket);
     }
 
-    void TcpServer::AddConnectionHandler(IConnectionHandler *connectionHandler)
+    void TcpServer::AddConnectionHandler(IConnectionHandler* connectionHandler)
     {
         if (std::find(connectionHandlers.begin(), connectionHandlers.end(), connectionHandler) == connectionHandlers.end())
         {
             connectionHandlers.push_back(connectionHandler);
         }
     }
-    void TcpServer::RemoveConnectionHandler(IConnectionHandler *connectionHandler)
+    void TcpServer::RemoveConnectionHandler(IConnectionHandler* connectionHandler)
     {
-        std::vector<IConnectionHandler *>::iterator it = std::find(connectionHandlers.begin(), connectionHandlers.end(), connectionHandler);
+        std::vector<IConnectionHandler*>::iterator it = std::find(connectionHandlers.begin(), connectionHandlers.end(), connectionHandler);
         if (it != connectionHandlers.end())
         {
             connectionHandlers.erase(it);

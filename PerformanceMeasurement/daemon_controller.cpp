@@ -134,6 +134,34 @@ namespace daemon_controller
         PM.Reset();
     }
 
+    void handle_exit()
+    {
+        int tmpMeasuring;
+        for (unsigned int i = 0; i < 5; i++)
+        {
+            pthread_mutex_lock(&lockMsgHandlerSource);
+            tmpMeasuring = PerfData.isMeasuring;
+            pthread_mutex_unlock(&lockMsgHandlerSource);
+            if (tmpMeasuring > 0)
+            {
+                std::cout << "WARNING: Sampling in progress!" << std::endl;
+                usleep(5 * 1000 * Config.SampleInterval); // 这里循环等待 一共 5*5 个采样周期
+            }
+            else
+            {
+                break;
+            }
+        }
+        if (tmpMeasuring > 0)
+        {
+            std::cout << "WARNING: Sampling in progress, but forced to exit!" << std::endl;
+        }
+        else
+        {
+            std::cout << "INFO: Measurement exit" << std::endl;
+        }
+    }
+
     HardwareStats handle_hardware_stats()
     {
         pthread_mutex_lock(&lockMsgHandlerSource);

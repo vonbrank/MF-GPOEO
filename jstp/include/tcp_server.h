@@ -16,8 +16,9 @@ namespace network
         ~TcpServer();
         void run() override;
 
-        void AddConnectionHandler(IConnectionHandler *connectionHandler);
-        void RemoveConnectionHandler(IConnectionHandler *connectionHandler);
+        void AddConnectionHandler(IConnectionHandler* connectionHandler);
+        void RemoveConnectionHandler(IConnectionHandler* connectionHandler);
+        void trycloseServer();
 
     private:
         std::string ip_address;
@@ -30,11 +31,10 @@ namespace network
         sockaddr_in socketAddress;
         unsigned int socketAddressLen;
 
-        std::vector<IConnectionHandler *> connectionHandlers;
+        std::vector<IConnectionHandler*> connectionHandlers;
 
     private:
         void startServer();
-        void closeServer();
         int init();
 
         void handleConnection(int handling_socket) override;

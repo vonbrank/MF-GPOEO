@@ -64,4 +64,12 @@ namespace network
             else {}
         }
     }
+
+    bool MgoRouter::checkExitRequest(json& request)
+    {
+        std::string method = request.at("header").at("method");
+        std::string url = request.at("header").at("url");
+
+        return method == "POST" && url == "EXIT";
+    }
 } // namespace network

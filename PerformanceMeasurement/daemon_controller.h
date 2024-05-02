@@ -29,6 +29,8 @@ namespace daemon_controller
 
     void handle_reset_sm_clock();
 
+    void handle_exit();
+
     HardwareStats handle_hardware_stats();
 
 } // namespace daemon_controller

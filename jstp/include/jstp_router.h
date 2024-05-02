@@ -9,7 +9,8 @@ namespace network
         using json = nlohmann::json;
 
     public:
-        virtual void handleRequest(json &request, json &response);
+        virtual void handleRequest(json& request, json& response);
+        virtual bool checkExitRequest(json& request);
     };
 
     class AppRouter : public JstpRouter
@@ -17,7 +18,7 @@ namespace network
         using json = nlohmann::json;
 
     public:
-        void handleRequest(json &request, json &response) override;
+        void handleRequest(json& request, json& response) override;
     };
 } // namespace network
 
